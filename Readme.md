@@ -9,3 +9,10 @@ A basic YouTube Clone application built with Node.js, Express, and MongoDB. This
 - [Environment Variables](#environment-variables)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Packages used for authentication and password protection
+
+- bcrypt-> creates the hash of password
+- jwt-> json web token that creates token using payload (user info) this token then can be used to access other services of website
+
+

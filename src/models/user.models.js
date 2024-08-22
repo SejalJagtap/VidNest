@@ -20,11 +20,11 @@ const userSchema = new mongoose.Schema(
         },
         fullname: {
             type: String,
+            unique: false,
             required: true,
-            unique: true,
             lowercase: true,
             trim: true,
-            index: true
+
         },
         avatar: {
             type: String,     //cloudinary url to get image url

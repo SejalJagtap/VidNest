@@ -1,76 +1,171 @@
-import { AsyncHandler } from "../utils/asyncHandler.js"
-import { User } from "../models/user.models.js"
-import { uploadOnCloudinary } from "../utils/cloudinary.js"
+import { AsyncHandler } from "../utils/asyncHandler.js";
+import { User } from "../models/user.models.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import fs from 'fs';
+
+
 const registerUser = AsyncHandler(async (req, res) => {
-    //Algorithm
-    // get user details from user - email username password fullname avatar coverimage
-    // validation - not empty
-    //check if user exists- through email
-    //check for images, chaek for valatar
-    //upload on cloudinary, avatar
-    //create user object-create entry in db
-    // remove password and refresh token field from response
-    // check for user creation
-    //return res
+    const avatarLocalPath = req.files?.avatar[0]?.path;
+    let coverImageLocalPath;
 
-    const { email, username, fullname, password } = req.body
-    console.log(email, username, fullname, password, avatar, coverImage);
-
-    if (fullname === "") {
-        throw new Error("fullname cannot be kept empty");
-    }
-    if (email === "") {
-        throw new Error("email cannot be kept empty");
-    }
-    if (username === "") {
-        throw new Error("username cannot be kept empty");
-    }
-    if (password === "") {
-        throw new Error("password cannot be kept empty");
+    if (req.files && req.files.coverImage && req.files.coverImage.length > 0) {
+        coverImageLocalPath = req.files.coverImage[0].path;
     }
 
-    const existedUser = await User.findOne({ email })
 
-    if (existedUser) {
-        throw new Error("user already exist");
-    }
+    try {
+        const { email, username, fullname, password } = req.body;
+        console.log(email, username, fullname, password);
 
-    const avatarLocalPath = req.files?.avatar[0]?.path
-    const coverImageLocalPath = req.files?.coverImage[0]?.path
-    if (!avatarLocalPath) {
-        throw new Error("avatar file is required");
 
-    }
+        if (!fullname) {
+            res.status(400);
+            throw new Error("Fullname cannot be kept empty");
+        }
+        if (!email) {
+            res.status(400);
+            throw new Error("Email cannot be kept empty");
+        }
+        if (!username) {
+            res.status(400);
+            throw new Error("Username cannot be kept empty");
+        }
+        if (!password) {
+            res.status(400);
+            throw new Error("Password cannot be kept empty");
+        }
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath)
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+        // Check if user already exists
+        const existedEmail = await User.findOne({ email });
+        const existedUsername = await User.findOne({ username });
 
-    if (!avatar) {
-        throw new Error("avatar file is required");
+        if (existedEmail) {
+            res.status(409);
+            throw new Error("User already exists with this email");
+        }
+        if (existedUsername) {
+            res.status(409);
+            throw new Error("User already exists with this username");
+        }
 
-    }
 
-    const user = await User.create(
-        {
+        if (!avatarLocalPath) {
+            res.status(400);
+            throw new Error("Avatar file is required");
+        }
+
+        // Upload files to Cloudinary
+        const avatar = await uploadOnCloudinary(avatarLocalPath);
+
+        let coverImage;
+        if (coverImageLocalPath) {
+            coverImage = await uploadOnCloudinary(coverImageLocalPath);
+        }
+
+
+
+
+        if (!avatar) {
+            res.status(500);
+            throw new Error("Failed to upload avatar file");
+        }
+
+        // Create user in the database
+        const user = await User.create({
             fullname,
             email,
             password,
             username: username.toLowerCase(),
             avatar: avatar.url,
-            coverImage: coverImage.url || ""
+            coverImage: coverImage?.url || ""
+        });
+
+        const createdUser = await User.findById(user._id).select("-password -refreshToken");
+        if (!createdUser) {
+            res.status(500);
+            throw new Error("Something went wrong while registering user");
         }
-    )
-    const createdUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    )
-    if (!createdUser) {
-        throw new Error("Something went wrong while registering user");
 
+
+        return res.status(200).json({ createdUser });
+
+    } catch (err) {
+        // Clean up uploaded files if any error occurs
+        if (avatarLocalPath && fs.existsSync(avatarLocalPath)) {
+            fs.unlinkSync(avatarLocalPath);
+        }
+        if (coverImageLocalPath && fs.existsSync(coverImageLocalPath)) {
+            fs.unlinkSync(coverImageLocalPath);
+        }
+
+
+        return res.status(res.statusCode || 500).json({ Error: err.message });
     }
-    return res.status(200).json({ createdUser })
+});
 
 
+const loginUser = AsyncHandler(async (req, res) => {
+    const { email, password } = req.body
+    if (!email) {
+        return res.status(400).json({ Error: "Email is required" });
+    }
+    if (!password) {
+        return res.status(400).json({ Error: "Password is required" });
+    }
+
+    // if login can be don using both username or email
+    // const user = await User.findOne(
+    //     {
+    //         $or:[email,username]  
+    //     });
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        return res.status(401).json({ Error: "Invalid email or password" });
+    }
+
+
+    const isPasswordCorrect = await user.isPasswordCorrect(password);
+    if (!isPasswordCorrect) {
+        return res.status(401).json({ Error: "Invalid email or password" });
+    }
+    const accessToken = await user.generateAccessToken();
+    const refreshToken = await user.generateRefreshToken();
+
+
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    // Return tokens to the client
+    return res.status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json({
+            user: {
+                username: user.username,
+                email: user.email,
+                fullname: user.fullname,
+                avatar: user.avatar,
+                coverImage: user.coverImage,
+
+            },
+            accessToken: accessToken,
+            refreshToken: refreshToken
+        }).message("user logged in successfully")
 
 
 })
-export { registerUser }
+
+const logoutUser = AsyncHandler(async (req, res) => {
+    //first collect accessToken from cookies or header from req - use middleware for this
+    //decode information from accesstoken
+    //search user by id in db 
+    // expire accesstoken of that user and refresh toke also
+})
+
+export { registerUser, loginUser };

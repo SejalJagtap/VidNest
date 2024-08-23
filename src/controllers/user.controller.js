@@ -155,8 +155,9 @@ const loginUser = AsyncHandler(async (req, res) => {
 
             },
             accessToken: accessToken,
-            refreshToken: refreshToken
-        }).message("user logged in successfully")
+            refreshToken: refreshToken,
+            message: "user logged in succesfully"
+        })
 
 
 })
@@ -166,6 +167,61 @@ const logoutUser = AsyncHandler(async (req, res) => {
     //decode information from accesstoken
     //search user by id in db 
     // expire accesstoken of that user and refresh toke also
+    User.findByIdAndUpdate(req.user._id,
+        {
+            $unset: {
+                refreshToken: 1 // this removes the field from document
+            },
+        },
+
+        {
+            new: true
+        }
+
+    )
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    return res
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json({ message: "User logged out succesfully" })
 })
 
-export { registerUser, loginUser };
+const refreshAccessToken = AsyncHandler(async (req, res) => {
+    const user = req.user;
+    const accessToken = await user.generateAccessToken();
+    const refreshToken = await user.generateRefreshToken();
+
+
+    // console.log(refreshToken, accessToken)
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    // Return tokens to the client
+    return res.status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json({
+            user: {
+                username: user.username,
+                email: user.email,
+                fullname: user.fullname,
+                avatar: user.avatar,
+                coverImage: user.coverImage,
+
+            },
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            message: "Access token refreshed "
+        })
+})
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken };

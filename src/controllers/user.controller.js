@@ -2,6 +2,8 @@ import { AsyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.models.js";
 import { deleteOnCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 import fs from 'fs';
+import mongoose from "mongoose";
+
 
 
 const registerUser = AsyncHandler(async (req, res) => {
@@ -397,5 +399,127 @@ const updateUserAvatar = AsyncHandler(async (req, res) => {
 //         )
 // })
 
+const getUserChannelProfile = AsyncHandler(async (req, res) => {
+    const { username } = req.params
+    if (!username?.trim()) {
+        return res.status(400).json({ message: "username is missing" })
+    }
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, getCurrentUser, changePassword, changeFullname, changeEmail, changeUsername, updateUserAvatar };
+    const channel = await User.aggregate([
+
+        {
+            $match: {
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscriberCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                fullname: 1,
+                email: 1,
+                username: 1,
+                avatar: 1,
+                coverImage: 1,
+                subscriberCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1
+            }
+        }
+
+
+
+
+    ])
+
+    if (!channel?.length) {
+        return res.status(404).json({ message: "channel does not exist" })
+    }
+    return res.status(200).json({ channel, message: "User channel fetched successfully" })
+
+})
+
+
+const getWatchHistory = AsyncHandler(async (req, res) => {
+    console.log(req.user._id)
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id),
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullname: 1,
+                                        username: 1,
+                                        avatar: 1,
+                                    },
+                                }
+                            ]
+                        },
+
+
+                    },
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+    console.log(user)
+
+    return res.status(200).json({ message: "watchhistory fetched succesfully", watchHistory: user[0].watchHistory })
+})
+
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, getCurrentUser, changePassword, changeFullname, changeEmail, changeUsername, updateUserAvatar, getUserChannelProfile, getWatchHistory };

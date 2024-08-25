@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
 import { Video } from "../models/video.models.js";
+import { User } from "../models/user.models.js";
 import { AsyncHandler } from "../utils/asyncHandler.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { deleteOnCloudinary, uploadOnCloudinary, uploadVideoOnCloudinary } from "../utils/cloudinary.js";
 
 const uploadVideo = AsyncHandler(async (req, res) => {
     const videoLocalPath = req.files?.videoFile[0]?.path
@@ -24,12 +25,13 @@ const uploadVideo = AsyncHandler(async (req, res) => {
     }
 
 
-    const video = await uploadOnCloudinary(videoLocalPath)
+    const video = await uploadVideoOnCloudinary(videoLocalPath)
     const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
 
 
 
     if (!video) {
+        await deleteOnCloudinary(thumbnail?.url)
         return res.status(500).json({
             message: "Failed to upload video"
         })
@@ -65,4 +67,41 @@ const uploadVideo = AsyncHandler(async (req, res) => {
 
 })
 
-export { uploadVideo }
+const watchVideo = AsyncHandler(
+    async (req, res) => {
+        const { videoID } = req.params;
+
+        console.log(videoID)
+        if (!videoID) {
+            return res.status(400).json({ message: "Video ID is required" });
+        }
+
+
+        const video = await Video.findByIdAndUpdate(
+            videoID,
+            {
+                $inc: { views: 1 }
+            },
+            { new: true }
+        );
+
+
+        if (!video) {
+            return res.status(404).json({ message: "Video not found" });
+        }
+
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        user.watchHistory.push(video._id);
+        await user.save();
+
+
+        return res.status(200).json({ video, message: "Video fetched successfully" });
+    }
+);
+
+
+export { uploadVideo, watchVideo }

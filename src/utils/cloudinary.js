@@ -32,6 +32,32 @@ const uploadOnCloudinary = async (localFilePath) => {
     }
 }
 
+const uploadVideoOnCloudinary = async (localFilePath) => {
+    try {
+        if (!localFilePath) return ""
+        //upload the file on cloudinary
+        const response = await cloudinary.uploader.upload(localFilePath, {
+            resource_type: "video"
+        })
+        // file has been uploaded successfull
+        console.log("file is uploaded on cloudinary ", response.url);
+        if (localFilePath && fs.existsSync(localFilePath)) {
+            fs.unlinkSync(localFilePath);
+        }
+
+        // fs.unlink(localFilePath)
+        return response;
+
+    } catch (error) {
+        if (localFilePath && fs.existsSync(localFilePath)) {
+            fs.unlinkSync(localFilePath);
+        } // remove the locally saved temporary file as the upload operation got failed
+
+        console.log("no video file found")
+        return null;
+    }
+}
+
 const deleteOnCloudinary = async (url) => {
     try {
         if (!url) {
@@ -51,4 +77,4 @@ const deleteOnCloudinary = async (url) => {
 
 
 
-export { uploadOnCloudinary, deleteOnCloudinary }
+export { uploadOnCloudinary, deleteOnCloudinary, uploadVideoOnCloudinary }

@@ -1,6 +1,6 @@
-# YouTube Clone
+# VidNest
 
-A basic YouTube Clone application built with Node.js, Express, and MongoDB. This guide covers setting up the project, installing dependencies, and connecting to MongoDB Atlas.
+An application built with Node.js, Express, and MongoDB. This guide covers setting up the project, installing dependencies, and connecting to MongoDB Atlas.
 
 ## Project Overview
 - [Step 1: Project Structure](#step-1-project-structure)
